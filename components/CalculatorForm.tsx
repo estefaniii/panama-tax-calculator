@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, AlertCircle } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface CalculatorFormProps {
   onCalculate: (income: number) => void
@@ -18,6 +19,7 @@ export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
   const [income, setIncome] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,12 +29,22 @@ export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
 
     if (isNaN(num) || num < 0) {
       setError("Por favor ingrese un número válido mayor o igual a 0")
+      toast({
+        title: "⚠️ Error de validación",
+        description: "Por favor ingrese un número válido mayor o igual a 0",
+        variant: "destructive",
+      })
       setIsLoading(false)
       return
     }
 
     if (num > 10000000) {
       setError("El ingreso no puede ser mayor a $10,000,000")
+      toast({
+        title: "⚠️ Error de validación",
+        description: "El ingreso no puede ser mayor a $10,000,000",
+        variant: "destructive",
+      })
       setIsLoading(false)
       return
     }
@@ -61,10 +73,10 @@ export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
   }
 
   return (
-    <Card className="w-full">
+    <Card className="w-full border-purple-200 bg-gradient-to-br from-purple-50 to-yellow-50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-green-600" />
+          <DollarSign className="w-5 h-5 text-purple-600" />
           Ingreso Anual
         </CardTitle>
         <CardDescription>Ingrese su ingreso anual bruto en dólares estadounidenses (USD)</CardDescription>
@@ -81,7 +93,7 @@ export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
                 value={formatNumber(income)}
                 onChange={handleInputChange}
                 placeholder="0.00"
-                className="pl-10 text-lg"
+                className="pl-10 text-lg border-purple-300 focus:border-purple-500 focus:ring-purple-500"
                 disabled={isLoading}
               />
             </div>
@@ -97,7 +109,7 @@ export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
             )}
           </div>
 
-          <Button type="submit" className="w-full text-lg py-6" disabled={!income || isLoading}>
+          <Button type="submit" className="w-full text-lg py-6 bg-purple-600 hover:bg-purple-700 text-white" disabled={!income || isLoading}>
             {isLoading ? (
               <motion.div
                 animate={{ rotate: 360 }}
@@ -110,9 +122,9 @@ export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
           </Button>
         </form>
 
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-semibold text-blue-800 mb-2">Tabla de Impuestos - Panamá</h3>
-          <div className="text-sm text-blue-700 space-y-1">
+        <div className="mt-6 p-4 bg-yellow-100 border border-yellow-300 rounded-lg">
+          <h3 className="font-semibold text-yellow-800 mb-2">Tabla de Impuestos - Panamá</h3>
+          <div className="text-sm text-yellow-700 space-y-1">
             <div>• Hasta $11,000: 0%</div>
             <div>• $11,000.01 - $50,000: 15% sobre el excedente</div>
             <div>• Más de $50,000: $5,850 + 25% sobre el excedente</div>
