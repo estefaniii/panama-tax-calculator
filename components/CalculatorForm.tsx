@@ -1,76 +1,97 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState } from "react"
-import { motion } from "framer-motion"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { DollarSign, AlertCircle } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DollarSign, AlertCircle, CheckCircle } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { useTaxHistory } from "@/hooks/useTaxHistory";
 
 interface CalculatorFormProps {
-  onCalculate: (income: number) => void
+  onSuccess?: () => void;
 }
 
-export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
-  const [income, setIncome] = useState("")
-  const [error, setError] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const { toast } = useToast()
+export function CalculatorForm({ onSuccess }: CalculatorFormProps) {
+  const [income, setIncome] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [taxResult, setTaxResult] = useState<number | null>(null);
+  const { toast } = useToast();
+  const { saveCalculation } = useTaxHistory();
+
+  const calculateTax = (incomeValue: number): number => {
+    if (incomeValue <= 11000) return 0;
+    if (incomeValue <= 50000) return (incomeValue - 11000) * 0.15;
+    return 5850 + (incomeValue - 50000) * 0.25;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
+    e.preventDefault();
+    setIsLoading(true);
+    setTaxResult(null);
 
-    const num = Number.parseFloat(income.replace(/,/g, ""))
+    const num = Number.parseFloat(income.replace(/,/g, ""));
 
     if (isNaN(num) || num < 0) {
-      setError("Por favor ingrese un número válido mayor o igual a 0")
+      setError("Por favor ingrese un número válido mayor o igual a 0");
       toast({
-        title: "⚠️ Error de validación",
+        title: "Error de validación",
         description: "Por favor ingrese un número válido mayor o igual a 0",
-        variant: "destructive",
-      })
-      setIsLoading(false)
-      return
+        variant: "destructive"
+      });
+      setIsLoading(false);
+      return;
     }
 
     if (num > 10000000) {
-      setError("El ingreso no puede ser mayor a $10,000,000")
+      setError("El ingreso no puede ser mayor a $10,000,000");
       toast({
-        title: "⚠️ Error de validación",
+        title: "Error de validación",
         description: "El ingreso no puede ser mayor a $10,000,000",
-        variant: "destructive",
-      })
-      setIsLoading(false)
-      return
+        variant: "destructive"
+      });
+      setIsLoading(false);
+      return;
     }
 
-    setError("")
+    setError("");
 
-    // Simular un pequeño delay para mostrar el loading
-    setTimeout(() => {
-      onCalculate(num)
-      setIsLoading(false)
-    }, 500)
-  }
+    try {
+      const tax = calculateTax(num);
+      setTaxResult(tax);
+      await saveCalculation(num, tax);
+      toast({
+        title: "Cálculo guardado",
+        description: "El cálculo ha sido guardado en tu historial"
+      });
+      if (onSuccess) onSuccess();
+    } catch (err) {
+      toast({
+        title: "Error al guardar",
+        description: "No se pudo guardar el cálculo en el historial",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const formatNumber = (value: string) => {
-    const num = value.replace(/,/g, "")
-    if (isNaN(Number.parseFloat(num))) return value
-    return Number.parseFloat(num).toLocaleString("en-US")
-  }
+    const num = value.replace(/,/g, "");
+    if (isNaN(Number.parseFloat(num))) return value;
+    return Number.parseFloat(num).toLocaleString("en-US");
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/,/g, "")
+    const value = e.target.value.replace(/,/g, "");
     if (value === "" || /^\d*\.?\d*$/.test(value)) {
-      setIncome(value)
-      setError("")
+      setIncome(value);
+      setError("");
     }
-  }
+  };
 
   return (
     <Card className="w-full border-purple-200 bg-gradient-to-br from-purple-50 to-yellow-50">
@@ -122,6 +143,29 @@ export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
           </Button>
         </form>
 
+        {taxResult !== null && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg"
+          >
+            <div className="flex items-center gap-2 text-green-700 mb-2">
+              <CheckCircle className="w-5 h-5" />
+              <h3 className="font-semibold">Resultado del Cálculo</h3>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Ingreso:</span>
+                <span className="font-medium">${Number(income).toLocaleString("en-US")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Impuesto calculado:</span>
+                <span className="font-medium">${taxResult.toLocaleString("en-US")}</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         <div className="mt-6 p-4 bg-yellow-100 border border-yellow-300 rounded-lg">
           <h3 className="font-semibold text-yellow-800 mb-2">Tabla de Impuestos - Panamá</h3>
           <div className="text-sm text-yellow-700 space-y-1">
@@ -132,5 +176,5 @@ export function CalculatorForm({ onCalculate }: CalculatorFormProps) {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

@@ -1,165 +1,160 @@
 import { NextResponse } from 'next/server';
+import { PoolClient, QueryResult } from 'pg'; // Importar tipos de pg
 import pool from '@/lib/db';
 
-// Configuración de caché para APIs dinámicas
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 100;
+const QUERY_TIMEOUT = 5000; // 5 segundos timeout
 
-// Tipos TypeScript para mejor autocompletado
-interface TaxCalculation {
-	id: number;
-	income: number;
-	tax: number;
-	calculation_date: string;
+interface CustomQueryResult {
+	rows: any[];
+	rowCount: number;
+	duration?: number;
 }
 
-// GET - Obtener historial con paginación
-export async function GET(request: Request) {
-	const { searchParams } = new URL(request.url);
-	const limit = Number(searchParams.get('limit')) || 20;
-	const offset = Number(searchParams.get('offset')) || 0;
+async function executeQueryWithRetry(
+	query: string,
+	params?: any[],
+	attempt = 0,
+): Promise<CustomQueryResult> {
+	if (attempt >= MAX_RETRIES) {
+		throw new Error(
+			`Max retries (${MAX_RETRIES}) exceeded for query: ${query}`,
+		);
+	}
 
-	const client = await pool.connect();
+	const startTime = Date.now();
+	let client: PoolClient | undefined;
 
 	try {
-		// Verificamos primero si la tabla existe
-		const tableExists = await client.query(
-			`SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_name = 'tax_calculations'
-      )`,
-		);
+		// Intento de conexión con timeout
+		const connectPromise = pool.connect();
+		client = await Promise.race<PoolClient>([
+			connectPromise,
+			new Promise<never>((_, reject) =>
+				setTimeout(
+					() => reject(new Error('Connection timeout')),
+					QUERY_TIMEOUT,
+				),
+			),
+		]);
 
-		if (!tableExists.rows[0].exists) {
-			return NextResponse.json(
-				{ error: 'La tabla de historial no existe' },
-				{ status: 404 },
-			);
-		}
+		// Ejecutar consulta con timeout
+		const queryPromise = client.query(query, params);
+		const result: QueryResult = await Promise.race<QueryResult>([
+			queryPromise,
+			new Promise<never>((_, reject) =>
+				setTimeout(() => reject(new Error('Query timeout')), QUERY_TIMEOUT),
+			),
+		]);
 
-		// Obtenemos los datos con paginación
-		const result = await client.query<TaxCalculation>(
-			`SELECT id, income, tax, calculation_date 
-       FROM tax_calculations 
-       ORDER BY calculation_date DESC 
-       LIMIT $1 OFFSET $2`,
-			[limit, offset],
-		);
-
-		// Obtenemos el conteo total para paginación
-		const countResult = await client.query(
-			'SELECT COUNT(*) FROM tax_calculations',
-		);
-
-		return NextResponse.json({
-			data: result.rows,
-			total: Number(countResult.rows[0].count),
-			limit,
-			offset,
-		});
+		return {
+			rows: result.rows,
+			rowCount: result.rowCount || 0, // Asegurar que rowCount sea número
+			duration: Date.now() - startTime,
+		};
 	} catch (error) {
-		console.error('Error fetching history:', error);
-		return NextResponse.json(
-			{
-				error: 'Error al obtener el historial',
-				details: String(error),
-			},
-			{ status: 500 },
+		const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt);
+		console.error(
+			`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`,
+			error,
 		);
+
+		await new Promise((resolve) => setTimeout(resolve, delay));
+		return executeQueryWithRetry(query, params, attempt + 1);
 	} finally {
-		client.release();
+		if (client) {
+			try {
+				client.release();
+			} catch (releaseError) {
+				console.error('Error releasing client:', releaseError);
+			}
+		}
 	}
 }
 
-// POST - Guardar nuevo cálculo con validación
-export async function POST(request: Request) {
-	let client;
+export async function GET() {
+	try {
+		const result = await executeQueryWithRetry(
+			`SELECT id, income, tax, calculation_date 
+       FROM tax_calculations 
+       ORDER BY calculation_date DESC 
+       LIMIT 20`,
+		);
 
+		return NextResponse.json({
+			status: 'success',
+			data: result.rows,
+			meta: {
+				count: result.rowCount,
+				durationMs: result.duration,
+			},
+		});
+	} catch (error) {
+		console.error('GET /api/history error:', error);
+
+		return NextResponse.json(
+			{
+				status: 'error',
+				message: 'Failed to fetch history',
+				error: error instanceof Error ? error.message : 'Unknown error',
+				suggestion: 'Check database connection and try again later',
+			},
+			{ status: 500 },
+		);
+	}
+}
+
+export async function POST(request: Request) {
 	try {
 		const { income, tax } = await request.json();
 
-		// Validación de datos
+		// Validación robusta de entrada
 		if (
 			typeof income !== 'number' ||
+			isNaN(income) ||
 			typeof tax !== 'number' ||
-			income < 0 ||
-			tax < 0
+			isNaN(tax)
 		) {
 			return NextResponse.json(
-				{ error: 'Datos de ingreso o impuesto inválidos' },
+				{
+					status: 'error',
+					message: 'Invalid input data',
+					details: 'Income and tax must be valid numbers',
+				},
 				{ status: 400 },
 			);
 		}
 
-		client = await pool.connect();
-		await client.query('BEGIN'); // Iniciamos transacción
-
-		const result = await client.query<TaxCalculation>(
+		const result = await executeQueryWithRetry(
 			`INSERT INTO tax_calculations (income, tax) 
-       VALUES ($1, $2) 
+       VALUES ($1, $2)
        RETURNING id, income, tax, calculation_date`,
 			[income, tax],
 		);
 
-		await client.query('COMMIT'); // Confirmamos transacción
-
-		return NextResponse.json(result.rows[0], { status: 201 });
-	} catch (error) {
-		if (client) {
-			await client.query('ROLLBACK'); // Revertimos en caso de error
+		if (result.rowCount === 0) {
+			throw new Error('No rows inserted');
 		}
-		console.error('Error saving calculation:', error);
+
 		return NextResponse.json(
 			{
-				error: 'Error al guardar el cálculo',
-				details: String(error),
+				status: 'success',
+				data: result.rows[0],
+			},
+			{ status: 201 },
+		);
+	} catch (error) {
+		console.error('POST /api/history error:', error);
+
+		return NextResponse.json(
+			{
+				status: 'error',
+				message: 'Failed to save calculation',
+				error: error instanceof Error ? error.message : 'Database error',
+				suggestion: 'Verify your data and try again',
 			},
 			{ status: 500 },
 		);
-	} finally {
-		if (client) {
-			client.release();
-		}
-	}
-}
-
-// DELETE - Limpiar historial con confirmación
-export async function DELETE(request: Request) {
-	const client = await pool.connect();
-
-	try {
-		// Verificamos si hay registros antes de borrar
-		const countResult = await client.query(
-			'SELECT COUNT(*) FROM tax_calculations',
-		);
-		const count = Number(countResult.rows[0].count);
-
-		if (count === 0) {
-			return NextResponse.json(
-				{ message: 'El historial ya está vacío' },
-				{ status: 200 },
-			);
-		}
-
-		await client.query('BEGIN');
-		await client.query('DELETE FROM tax_calculations');
-		await client.query('COMMIT');
-
-		return NextResponse.json({
-			message: 'Historial eliminado',
-			deletedCount: count,
-		});
-	} catch (error) {
-		await client.query('ROLLBACK');
-		console.error('Error clearing history:', error);
-		return NextResponse.json(
-			{
-				error: 'Error al limpiar el historial',
-				details: String(error),
-			},
-			{ status: 500 },
-		);
-	} finally {
-		client.release();
 	}
 }

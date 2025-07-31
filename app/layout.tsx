@@ -1,6 +1,6 @@
-import type { Metadata } from 'next'
-import './globals.css'
-import { Toaster } from '@/components/ui/toaster'
+import type { Metadata } from 'next';
+import './globals.css';
+import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
   title: 'Calculadora de Impuestos - Panamá',
@@ -11,13 +11,13 @@ export const metadata: Metadata = {
     shortcut: '/tax.PNG',
     apple: '/tax.PNG',
   },
-}
+};
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="es">
       <body>
@@ -25,5 +25,5 @@ export default function RootLayout({
         <Toaster />
       </body>
     </html>
-  )
+  );
 }
