@@ -42,42 +42,42 @@ Una aplicación web moderna y responsiva para calcular el impuesto sobre la rent
 ### Pasos de instalación
 
 1. **Clonar el repositorio**
-   \`\`\`bash
+   ```bash
    git clone https://github.com/tu-usuario/panama-tax-calculator.git
    cd panama-tax-calculator
-   \`\`\`
+   ```
 
 2. **Instalar dependencias**
-   \`\`\`bash
+```bash
    npm install
-   \`\`\`
+   ```
 
 3. **Configurar variables de entorno**
-   \`\`\`bash
+   ```bash
    cp .env.example .env.local
-   \`\`\`
+   ```
    
    Edita \`.env.local\` y agrega tu URL de conexión a Neon:
-   \`\`\`
+  ```bash
    POSTGRES_URL="tu-connection-string-de-neon"
-   \`\`\`
+   ```
 
 4. **Crear las tablas en la base de datos**
    
    Ejecuta el script SQL en tu consola de Neon o usando el cliente de PostgreSQL:
-   \`\`\`sql
+   ```sql
    CREATE TABLE IF NOT EXISTS tax_calculations (
      id SERIAL PRIMARY KEY,
      income DECIMAL(12, 2) NOT NULL,
      tax DECIMAL(12, 2) NOT NULL,
      calculation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
    );
-   \`\`\`
+   ```
 
 5. **Ejecutar en desarrollo**
-   \`\`\`bash
+   ```bash
    npm run dev
-   \`\`\`
+   ```
 
 6. **Abrir en el navegador**
    
@@ -113,7 +113,7 @@ La aplicación está optimizada para:
 
 ## 🔧 Estructura del Proyecto
 
-\`\`\`
+```
 panama-tax-calculator/
 ├── app/
 │   ├── api/history/          # API routes para historial
@@ -132,7 +132,7 @@ panama-tax-calculator/
 │   └── taxCalculations.ts    # Lógica de cálculo
 └── scripts/
     └── create-tables.sql     # Script de base de datos
-\`\`\`
+```
 
 ## 🧪 Testing
 
